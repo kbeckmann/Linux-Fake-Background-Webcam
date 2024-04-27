@@ -244,42 +244,17 @@ class FakeCam:
                 self.old_mask = mask
             mask = cv2.accumulateWeighted(mask, self.old_mask, self.MRAR)
 
-        # Get background image
-        if self.no_background is False:
-            background_frame = next(self.images["background"])
-        else:
-            background_frame = cv2.GaussianBlur(frame,
-                                                (self.background_blur,
-                                                 self.background_blur),
-                                                self.sigma,
-                                                borderType=cv2.BORDER_DEFAULT)
+        # Alpha hack
 
-        # Apply colour map to the background
-        if self.cmap_bg:
-            cv2.applyColorMap(background_frame, cmap(self.cmap_bg),
-                    dst=background_frame)
+        height, width, _ = frame.shape
+        new_img = np.zeros((height, width, 4), dtype=frame.dtype)
+        new_img[:, :, :3] = frame
+        new_img[..., 3] = mask[...] * 255
 
-        # Selfie processing
-        for [k, *v] in self.selfie_effects:
-            k = k + '_effect'
-            frame = globals()[k](frame, *v)
-
-        # Replace background
-        if self.use_sigmoid:
-            mask = sigmoid(mask)
-
-        cv2.blendLinear(frame, background_frame, mask, 1 - mask, dst=frame)
-
-        # Add foreground if needed
-        if self.use_foreground and self.foreground_image is not None:
-            cv2.blendLinear(frame, self.images["foreground"],
-                    self.images["inverted_foreground_mask"],
-                    self.images["foreground_mask"], dst=frame)
-
-        return frame
+        return new_img
 
     def put_frame(self, frame):
-        self.fake_cam.schedule_frame(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        self.fake_cam.schedule_frame(frame)
 
     def run(self):
         self.load_images()
@@ -334,15 +309,16 @@ class FakeCam:
                     frame_count = 0
                     t0 = time.monotonic()
             else:
-                width = 0
-                height = 0
-                if self.real_cam is not None:
-                    self.real_cam = None
-                    if blank_image is not None:
-                        blank_image.flags.writeable = True
-                    blank_image = np.zeros((self.height, self.width), dtype=np.uint8)
-                    blank_image.flags.writeable = False
-                self.put_frame(blank_image)
+                # Ignore for now
+                # width = 0
+                # height = 0
+                # if self.real_cam is not None:
+                #     self.real_cam = None
+                #     if blank_image is not None:
+                #         blank_image.flags.writeable = True
+                #     blank_image = np.zeros((self.height, self.width), dtype=np.uint8)
+                #     blank_image.flags.writeable = False
+                # self.put_frame(blank_image)
                 time.sleep(1)
 
     def toggle_pause(self):

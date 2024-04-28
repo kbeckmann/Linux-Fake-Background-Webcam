@@ -11,10 +11,13 @@ import cv2
 import numpy as np
 import pyfakewebcam
 import time
-import mediapipe as mp
 from cmapy import cmap
 from matplotlib import colormaps
 import copy
+
+# yolo
+from ultralytics import YOLO
+
 
 class RealCam:
     def __init__(self, src, frame_width, frame_height, frame_rate, codec):
@@ -106,9 +109,13 @@ class FakeCam:
         self.postprocess = args.no_postprocess
         self.ondemand = not args.no_ondemand
         self.v4l2loopback_path = args.v4l2loopback_path
-        self.classifier = mp.solutions.selfie_segmentation.SelfieSegmentation(
-            model_selection=args.select_model)
         self.cmap_bg = args.cmap_bg
+
+        # Initialize yolo
+        self.model = YOLO("yolov8n-seg.pt")
+        # self.model = YOLO("yolov8x-seg.pt")
+        # self.model = YOLO("yolov9c-seg.pt")
+        # self.model = YOLO("yolov9e-seg.pt")
 
         # backward compatibility
         if args.hologram:
@@ -230,7 +237,28 @@ class FakeCam:
                 self.images["foreground_mask"]
 
     def compose_frame(self, frame):
-        mask = copy.copy(self.classifier.process(frame).segmentation_mask)
+        # Run YOLOv8 and combine all person masks
+        results = self.model(frame, show=False)
+
+        # Create binary mask
+        mask = np.zeros(frame.shape[:2], np.uint8)
+
+        for r in results:
+            # Iterate each object contour (multiple detections)
+            for c in r:
+                #  Get detection class name
+                label = c.names[c.boxes.cls.tolist().pop()]
+                print(label)
+
+                #  Extract contour result
+                contour = c.masks.xy.pop()
+                #  Changing the type
+                contour = contour.astype(np.int32)
+                #  Reshaping
+                contour = contour.reshape(-1, 1, 2)
+
+                cv2.fillPoly(mask, [contour], 255)
+
 
         if self.threshold < 1:
             cv2.threshold(mask, self.threshold, 1, cv2.THRESH_BINARY, dst=mask)
@@ -239,17 +267,17 @@ class FakeCam:
             cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=1, dst=mask)
             cv2.blur(mask, (10, 10), dst=mask)
 
-        if self.MRAR < 1:
-            if self.old_mask is None:
-                self.old_mask = mask
-            mask = cv2.accumulateWeighted(mask, self.old_mask, self.MRAR)
+        # if self.MRAR < 1:
+        #     if self.old_mask is None:
+        #         self.old_mask = mask
+        #     mask = cv2.accumulateWeighted(mask, self.old_mask, self.MRAR)
 
         # Alpha hack
 
         height, width, _ = frame.shape
         new_img = np.zeros((height, width, 4), dtype=frame.dtype)
         new_img[:, :, :3] = frame
-        new_img[..., 3] = mask[...] * 255
+        new_img[..., 3] = mask[...]
 
         return new_img
 

@@ -270,22 +270,12 @@ class FakeCam:
 
             if self.history is None:
                 self.history = [mask] * num_masks
-
-            self.history.insert(0, mask)
-            self.history = self.history[:-1]
+            else:
+                self.history = [mask] + self.history[:-1]
 
             # Calculate the weights for each mask
-            # weights = np.linspace(1.0, 0.0, num_masks, dtype=np.float32)
-            # weights = np.linspace(0.5, 0.0, num_masks, dtype=np.float32)
             weights = self.sigmoid(np.linspace(1.0, -1.0, num_masks, dtype=np.float32), 2)
-
-            combined_mask = np.zeros(frame.shape[:2], np.float32)
-            for idx, mask in enumerate(self.history):
-                combined_mask += mask * weights[idx]
-                # combined_mask += m
-
-            # combined_mask //= num_masks
-            combined_mask = np.clip(combined_mask, 0, 255)
+            combined_mask = np.clip(np.sum(np.array(self.history) * weights[:, None, None], axis=0), 0, 255)
             mask = combined_mask.astype(np.uint8)
 
         if self.threshold < 1:

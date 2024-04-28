@@ -110,6 +110,7 @@ class FakeCam:
         self.ondemand = not args.no_ondemand
         self.v4l2loopback_path = args.v4l2loopback_path
         self.cmap_bg = args.cmap_bg
+        self.confidence = args.confidence
 
         # Initialize yolo
         self.model = YOLO("yolov8n-seg.pt")
@@ -243,7 +244,9 @@ class FakeCam:
 
     def compose_frame(self, frame):
         # Run YOLOv8 and combine all person masks
-        results = self.model(frame, show=False)
+        # verbose = True
+        verbose = False
+        results = self.model(frame, verbose=verbose, show=False, conf=self.confidence)
 
         # Create binary mask
         mask = np.zeros(frame.shape[:2], np.uint8)
@@ -253,7 +256,11 @@ class FakeCam:
             for c in r:
                 #  Get detection class name
                 label = c.names[c.boxes.cls.tolist().pop()]
-                print(label)
+                # print(label)
+
+                # Can tweak this to include other objects to mask
+                # if label not in ["person"]:
+                #    continue
 
                 #  Extract contour result
                 contour = c.masks.xy.pop()
@@ -454,6 +461,8 @@ https://github.com/fangfufu/Linux-Fake-Background-Webcam/issues/135#issuecomment
 https://gitlab.com/cvejarano-oss/cmapy/blob/master/docs/colorize_all_examples.md")
     parser.add_argument("--cmap-bg", default=None, type=str,
                         help="Apply colour map to background using cmapy")
+    parser.add_argument("--confidence", default=0.05, type=float,
+                        help="Set confidence threshold for segmentation. Lower tend to reduce flickering.")
     return parser.parse_args()
 
 

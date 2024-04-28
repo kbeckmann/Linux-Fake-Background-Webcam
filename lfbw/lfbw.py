@@ -117,6 +117,8 @@ class FakeCam:
         # self.model = YOLO("yolov9c-seg.pt")
         # self.model = YOLO("yolov9e-seg.pt")
 
+        self.history = None
+
         # backward compatibility
         if args.hologram:
             args.selfie.append('hologram')
@@ -236,6 +238,9 @@ class FakeCam:
             self.images["inverted_foreground_mask"] = 1 - \
                 self.images["foreground_mask"]
 
+    def sigmoid(self, x, scale=1):
+        return 1 / (1 + np.exp(-x * scale))
+
     def compose_frame(self, frame):
         # Run YOLOv8 and combine all person masks
         results = self.model(frame, show=False)
@@ -259,6 +264,29 @@ class FakeCam:
 
                 cv2.fillPoly(mask, [contour], 255)
 
+        # History with weighted combination.. Not sure if it's worth it
+        if True:
+            num_masks = 8
+
+            if self.history is None:
+                self.history = [mask] * num_masks
+
+            self.history.insert(0, mask)
+            self.history = self.history[:-1]
+
+            # Calculate the weights for each mask
+            # weights = np.linspace(1.0, 0.0, num_masks, dtype=np.float32)
+            # weights = np.linspace(0.5, 0.0, num_masks, dtype=np.float32)
+            weights = self.sigmoid(np.linspace(1.0, -1.0, num_masks, dtype=np.float32), 2)
+
+            combined_mask = np.zeros(frame.shape[:2], np.float32)
+            for idx, mask in enumerate(self.history):
+                combined_mask += mask * weights[idx]
+                # combined_mask += m
+
+            # combined_mask //= num_masks
+            combined_mask = np.clip(combined_mask, 0, 255)
+            mask = combined_mask.astype(np.uint8)
 
         if self.threshold < 1:
             cv2.threshold(mask, self.threshold, 1, cv2.THRESH_BINARY, dst=mask)
@@ -266,6 +294,7 @@ class FakeCam:
         if self.postprocess:
             cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=1, dst=mask)
             cv2.blur(mask, (10, 10), dst=mask)
+
 
         # if self.MRAR < 1:
         #     if self.old_mask is None:
